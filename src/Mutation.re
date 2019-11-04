@@ -53,6 +53,8 @@ module Make = (Config: Config) => {
     awaitRefetchQueries: bool,
     [@bs.optional]
     update: (ApolloClient.generatedApolloClient, mutationResult) => unit,
+    [@bs.optional]
+    optimisticResponse: Js.Json.t,
   };
 
   type jsResult = {
@@ -70,6 +72,8 @@ module Make = (Config: Config) => {
       ~client: ApolloClient.generatedApolloClient=?,
       ~refetchQueries: refetchQueries=?,
       ~awaitRefetchQueries: bool=?,
+      ~update: (ApolloClient.generatedApolloClient, mutationResult) => unit=?,
+      ~optimisticResponse: Js.Json.t=?,
       unit
     ) =>
     Js.Promise.t(controlledVariantResult(Config.t));
@@ -86,6 +90,7 @@ module Make = (Config: Config) => {
         ~refetchQueries=?,
         ~awaitRefetchQueries=?,
         ~update=?,
+        ~optimisticResponse=?,
         (),
       ) => {
     let (jsMutate, jsResult) =
@@ -97,6 +102,7 @@ module Make = (Config: Config) => {
           ~refetchQueries?,
           ~awaitRefetchQueries?,
           ~update?,
+          ~optimisticResponse?,
           (),
         ),
       );
@@ -109,6 +115,8 @@ module Make = (Config: Config) => {
           ~client=?,
           ~refetchQueries=?,
           ~awaitRefetchQueries=?,
+          ~update=?,
+          ~optimisticResponse=?,
           (),
         ) =>
           jsMutate(.
@@ -117,6 +125,8 @@ module Make = (Config: Config) => {
               ~client?,
               ~refetchQueries?,
               ~awaitRefetchQueries?,
+              ~update?,
+              ~optimisticResponse?,
               (),
             ),
           )
