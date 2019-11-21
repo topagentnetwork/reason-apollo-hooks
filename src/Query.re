@@ -4,7 +4,24 @@ module type Config = {
   let parse: Js.Json.t => t;
 };
 
-type error = {. "message": string};
+type specificError = {
+  .
+  "message": string,
+  "name": string,
+  "time_thrown": string,
+};
+
+type rawError = {
+  .
+  "message": string,
+  "graphQLErrors": Js.Nullable.t(array(specificError)),
+};
+
+type error = {
+  .
+  "message": string,
+  "name": option(string),
+};
 
 type variant('a) =
   | Data('a)
@@ -37,6 +54,18 @@ type result('a) = {
     Js.Promise.t(unit),
   networkStatus: Types.networkStatus,
 };
+
+let decodeError = e =>
+  e->Belt.Option.map(err =>
+    {
+      "message": err##message,
+      "name":
+        err##graphQLErrors
+        ->Js.Nullable.toOption
+        ->Belt.Option.flatMap(arr => arr->Belt.Array.get(0))
+        ->Belt.Option.map(e => e##name),
+    }
+  );
 
 /**
  * apollo-client/src/core/watchQueryOptions.ts
@@ -76,7 +105,7 @@ module Make = (Config: Config) => {
       .
       "data": Js.Nullable.t(Js.Json.t),
       "loading": bool,
-      "error": Js.Nullable.t(error),
+      "error": Js.Nullable.t(rawError),
       [@bs.meth]
       "refetch": Js.Nullable.t(Js.Json.t) => Js.Promise.t(Js.Json.t),
       [@bs.meth] "fetchMore": fetchMoreOptions => Js.Promise.t(unit),
@@ -130,7 +159,7 @@ module Make = (Config: Config) => {
                   }
                 ),
             loading: jsResult##loading,
-            error: jsResult##error->Js.Nullable.toOption,
+            error: jsResult##error->Js.Nullable.toOption->decodeError,
             networkStatus: Types.toNetworkStatus(jsResult##networkStatus),
             refetch: (~variables=?, ()) =>
               jsResult##refetch(Js.Nullable.fromOption(variables))
