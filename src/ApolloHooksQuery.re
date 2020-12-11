@@ -39,6 +39,8 @@ type subscribeToMoreOptionsJs = {
   variables: Js.Json.t,
   [@bs.optional]
   updateQuery: updateQuerySubscribeToMoreT,
+  [@bs.optional]
+  onError: apolloError => unit,
 };
 
 type unsubscribeFnT = unit => unit;
@@ -60,6 +62,7 @@ type queryResult('a) = {
       ~document: ReasonApolloTypes.queryString,
       ~variables: Js.Json.t=?,
       ~updateQuery: updateQuerySubscribeToMoreT=?,
+      ~onError: apolloError => unit=?,
       unit
     ) =>
     unsubscribeFnT,
@@ -191,12 +194,14 @@ let useQuery:
               ),
             stopPolling: () => jsResult##stopPolling(),
             startPolling: interval => jsResult##startPolling(interval),
-            subscribeToMore: (~document, ~variables=?, ~updateQuery=?, ()) =>
+            subscribeToMore:
+              (~document, ~variables=?, ~updateQuery=?, ~onError=?, ()) =>
               jsResult##subscribeToMore(
                 subscribeToMoreOptionsJs(
                   ~document,
                   ~variables?,
                   ~updateQuery?,
+                  ~onError?,
                   (),
                 ),
               ),
