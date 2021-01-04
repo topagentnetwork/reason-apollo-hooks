@@ -39,6 +39,8 @@ type subscribeToMoreOptionsJs = {
   variables: Js.Json.t,
   [@bs.optional]
   updateQuery: updateQuerySubscribeToMoreT,
+  [@bs.optional]
+  onError: apolloError => unit,
 };
 
 type unsubscribeFnT = unit => unit;
@@ -60,6 +62,7 @@ type queryResult('a) = {
       ~document: ReasonApolloTypes.queryString,
       ~variables: Js.Json.t=?,
       ~updateQuery: updateQuerySubscribeToMoreT=?,
+      ~onError: apolloError => unit=?,
       unit
     ) =>
     unsubscribeFnT,
@@ -93,6 +96,8 @@ type options = {
   skip: bool,
   [@bs.optional]
   pollInterval: int,
+  [@bs.optional]
+  context: Context.t,
 };
 
 [@bs.module "@apollo/react-hooks"]
@@ -122,6 +127,7 @@ let useQuery:
     ~errorPolicy: ApolloHooksTypes.errorPolicy=?,
     ~skip: bool=?,
     ~pollInterval: int=?,
+    ~context: Context.t=?,
     graphqlDefinition('data, _, _)
   ) =>
   (variant('data), queryResult('data)) =
@@ -133,6 +139,7 @@ let useQuery:
     ~errorPolicy=?,
     ~skip=?,
     ~pollInterval=?,
+    ~context=?,
     (parse, query, _),
   ) => {
     let jsResult =
@@ -148,6 +155,7 @@ let useQuery:
             errorPolicy->Belt.Option.map(ApolloHooksTypes.errorPolicyToJs),
           ~skip?,
           ~pollInterval?,
+          ~context?,
           (),
         ),
       );
@@ -186,12 +194,14 @@ let useQuery:
               ),
             stopPolling: () => jsResult##stopPolling(),
             startPolling: interval => jsResult##startPolling(interval),
-            subscribeToMore: (~document, ~variables=?, ~updateQuery=?, ()) =>
+            subscribeToMore:
+              (~document, ~variables=?, ~updateQuery=?, ~onError=?, ()) =>
               jsResult##subscribeToMore(
                 subscribeToMoreOptionsJs(
                   ~document,
                   ~variables?,
                   ~updateQuery?,
+                  ~onError?,
                   (),
                 ),
               ),

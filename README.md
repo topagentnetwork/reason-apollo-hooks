@@ -1,17 +1,41 @@
+# ⚠️ Prefer the new https://github.com/reasonml-community/reason-apollo-client instead
+
+---
+
 # reason-apollo-hooks
+
 <!-- ALL-CONTRIBUTORS-BADGE:START - Do not remove or modify this section -->
-[![All Contributors](https://img.shields.io/badge/all_contributors-16-orange.svg?style=flat-square)](#contributors-)
+
+[![All Contributors](https://img.shields.io/badge/all_contributors-18-orange.svg?style=flat-square)](#contributors-)
+
 <!-- ALL-CONTRIBUTORS-BADGE:END -->
 
-Reason bindings for the official @apollo/react-hooks
+Reason bindings for the official [@apollo/react-hooks](https://www.npmjs.com/package/@apollo/react-hooks)
 
-## Installation
+## Table of contents
+
+- [reason-apollo-hooks](#reason-apollo-hooks)
+  - [Table of contents](#table-of-contents)
+  - [Installation :arrow_up:](#installation-arrowup)
+  - [Setting up :arrow_up:](#setting-up-arrowup)
+    - [Usage with reason-apollo :arrow_up:](#usage-with-reason-apollo-arrowup)
+  - [Available hooks :arrow_up:](#available-hooks-arrowup)
+    - [useQuery :arrow_up:](#usequery-arrowup)
+    - [useMutation :arrow_up:](#usemutation-arrowup)
+    - [useSubscription :arrow_up:](#usesubscription-arrowup)
+  - [Cache :arrow_up:](#cache-arrowup)
+  - [Fragment :arrow_up:](#fragment-arrowup)
+  - [Getting it running](#getting-it-running)
+  - [Contributors ✨](#contributors-%e2%9c%a8)
+
+## Installation [:arrow_up:](#table-of-contents)
 
 ```
-yarn add reason-apollo-hooks reason-apollo@0.18.0 @apollo/react-hooks
+yarn add reason-apollo-hooks reason-apollo@0.19.0 @apollo/react-hooks
 ```
 
 BuckleScript <= 5.0.0
+
 ```
 yarn add reason-apollo-hooks@3.0.0 reason-apollo@0.17.0 @apollo/react-hooks
 ```
@@ -28,7 +52,7 @@ Then update your bsconfig.json
 ]
 ```
 
-## Setting up
+## Setting up [:arrow_up:](#table-of-contents)
 
 Add the provider in the top of the tree
 
@@ -49,7 +73,7 @@ let app =
  </ApolloHooks.Provider>
 ```
 
-### Usage with reason-apollo
+### Usage with reason-apollo [:arrow_up:](#table-of-contents)
 
 To use with `reason-apollo`'s `ReasonApollo.Provider` already present in your project:
 
@@ -66,9 +90,9 @@ ReactDOMRe.renderToElementWithId(
 );
 ```
 
-# Available hooks
+## Available hooks [:arrow_up:](#table-of-contents)
 
-## useQuery
+### useQuery [:arrow_up:](#table-of-contents)
 
 ```reason
 open ApolloHooks
@@ -148,7 +172,7 @@ let (simple, _full) =
   );
 ```
 
-## useMutation
+### useMutation [:arrow_up:](#table-of-contents)
 
 ```reason
 module ScreamMutation = [%graphql {|
@@ -162,22 +186,34 @@ module ScreamMutation = [%graphql {|
 [@react.component]
 let make = () => {
   /* Both variant and records available */
-  let ( screamMutation, _simple, _full ) = useMutation(~variables=ScreamMutation.makeVariables(~screamLevel=10, ()), ScreamMutation.definition);
+  let ( screamMutation, simple, _full ) =
+    useMutation(~variables=ScreamMutation.makeVariables(~screamLevel=10, ()), ScreamMutation.definition);
   let scream = (_) => {
     screamMutation()
-      |> Js.Promise.then_(result => {
-          switch(result) {
-            | Data(data) => ...
-            | Error(error) => ...
-            | NoData => ...
-          }
-          Js.Promise.resolve()
-        })
+      |> Js.Promise.then_(((simple, _full)) => {
+           // Trigger side effects by chaining the promise returned by screamMutation()
+           switch (simple) {
+             // You *must* set the error policy to be able to handle errors
+             // in then_. See EditPersons.re for more
+           | ApolloHooks.Mutation.Errors(_theErrors) => Js.log("OH NO!")
+           | NoData => Js.log("NO DATA?")
+           | Data(_theData) => Js.log("DATA!")
+           };
+           Js.Promise.resolve();
+         })
       |> ignore
   }
 
+  // Use simple (and/or full) for (most) UI feedback
   <div>
-    <button onClick={scream}>
+    {switch (simple) {
+     | NotCalled
+     | Data(_) => React.null
+     | Loading => <div> "Screaming!"->React.string </div>
+     | NoData
+     | Error(_) => <div> "Something went wrong!"->React.string </div>
+     }}
+    <button onClick={scream} disabled={simple === Loading}>
       {React.string("You kids get off my lawn!")}
     </button>
   </div>
@@ -193,14 +229,9 @@ let make = () => {
   let ( screamMutation, _simple, _full ) = useMutation(ScreamMutation.definition);
   let scream = (_) => {
     screamMutation(~variables=ScreamMutation.makeVariables(~screamLevel=10, ()), ())
-      |> Js.Promise.then_(result => {
-          switch(result) {
-            | Data(data) => ...
-            | Error(error) => ...
-            | NoData => ...
-          }
-          Js.Promise.resolve()
-        })
+      |> Js.Promise.then_(((simple, _full)) => {
+           ...
+         })
       |> ignore
   }
 
@@ -212,7 +243,82 @@ let make = () => {
 }
 ```
 
-## Cache
+### useSubscription [:arrow_up:](#table-of-contents)
+
+In order to use subscriptions, you first need to set up your websocket link:
+
+```diff
+/* Create an InMemoryCache */
+let inMemoryCache = ApolloInMemoryCache.createInMemoryCache();
+
+/* Create an HTTP Link */
+let httpLink =
+  ApolloLinks.createHttpLink(~uri="http://localhost:3010/graphql", ());
++
++/* Create a WS Link */
++let webSocketLink =
++  ApolloLinks.webSocketLink({
++    uri: "wss://localhost:3010/graphql",
++    options: {
++      reconnect: true,
++      connectionParams: None,
++    },
++  });
++
++/* Using the ability to split links, you can send data to each link
++   depending on what kind of operation is being sent */
++let link =
++  ApolloLinks.split(
++    operation => {
++      let operationDefition =
++        ApolloUtilities.getMainDefinition(operation.query);
++      operationDefition.kind == "OperationDefinition"
++      && operationDefition.operation == "subscription";
++    },
++    webSocketLink,
++    httpLink,
++  );
+
+let client =
+-  ReasonApollo.createApolloClient(~link=httpLink, ~cache=inMemoryCache, ());
++  ReasonApollo.createApolloClient(~link, ~cache=inMemoryCache, ());
+
+let app =
+ <ApolloHooks.Provider client>
+   ...
+ </ApolloHooks.Provider>
+```
+
+Then, you can implement `useSubscription` in a similar manner to `useQuery`
+
+```reason
+module UserAdded = [%graphql {|
+  subscription userAdded {
+    userAdded {
+      id
+      name
+    }
+  }
+|}];
+
+
+[@react.component]
+let make = () => {
+  let (userAddedSubscription, _full) = ApolloHooks.useSubscription(UserAdded.definition);
+
+  switch (userAddedSubscription) {
+    | Loading => <div> {ReasonReact.string("Loading")} </div>
+    | Error(error) => <div> {ReasonReact.string(error##message)} </div>
+    | Data(_response) =>
+      <audio autoPlay=true>
+      <source src="notification.ogg" type_="audio/ogg" />
+      <source src="notification.mp3" type_="audio/mpeg" />
+    </audio>
+  };
+};
+```
+
+## Cache [:arrow_up:](#table-of-contents)
 
 There are a couple of caveats with manual cache updates.
 
@@ -289,11 +395,44 @@ If using directives like `@bsRecord`, `@bsDecoder` or `@bsVariant` in `graphql_p
 
 By default, apollo will add field `__typename` to the queries and will use it to normalize data and manipulate cache (see [normalization](https://www.apollographql.com/docs/react/advanced/caching/#normalization)). This field won't exist on parsed reason objects, since it is not included in the actual query you write, but is added by apollo before sending the query. Since `__typename` is crucial for the cache to work correctly, we need to read data from cache in its raw unparsed format, which is achieved with `readQuery` from `ApolloClient.ReadQuery` defined in `reason-apollo`.
 
+
+## Fragment [:arrow_up:](#table-of-contents)
+
+Using [fragments](https://www.apollographql.com/docs/react/data/fragments/).
+
+Fragments can be defined and used like this:
+
+```reason
+// Fragments.re
+module PersonFragment = [%graphql
+  {|
+  fragment person on Person {
+      id
+      name
+      age
+  }
+|}
+];
+
+```
+
+```reason
+module PersonsQuery = [%graphql
+{|
+  query getAllPersons  {
+    ...Fragments.PersonFragment.Person
+  }
+|}
+];
+```
+
+See [examples/persons/src/fragments/LoadMoreFragments.re](examples/persons/src/fragments/LoadMoreFragments.re).
+
 ## Getting it running
 
 ```sh
-npm install
-npm start
+yarn
+yarn start
 ```
 
 ## Contributors ✨
@@ -325,11 +464,14 @@ Thanks goes to these wonderful people ([emoji key](https://allcontributors.org/d
   <tr>
     <td align="center"><a href="https://github.com/soulplant"><img src="https://avatars3.githubusercontent.com/u/16846?v=4" width="100px;" alt=""/><br /><sub><b>soulplant</b></sub></a><br /><a href="https://github.com/Astrocoders/reason-apollo-hooks/commits?author=soulplant" title="Code">💻</a></td>
     <td align="center"><a href="https://github.com/mbirkegaard"><img src="https://avatars0.githubusercontent.com/u/18616185?v=4" width="100px;" alt=""/><br /><sub><b>mbirkegaard</b></sub></a><br /><a href="https://github.com/Astrocoders/reason-apollo-hooks/commits?author=mbirkegaard" title="Code">💻</a></td>
+    <td align="center"><a href="https://strdr4605.github.io"><img src="https://avatars3.githubusercontent.com/u/16056918?v=4" width="100px;" alt=""/><br /><sub><b>Dragoș Străinu</b></sub></a><br /><a href="https://github.com/Astrocoders/reason-apollo-hooks/commits?author=strdr4605" title="Documentation">📖</a></td>
+    <td align="center"><a href="https://github.com/bdunn313"><img src="https://avatars3.githubusercontent.com/u/867683?v=4" width="100px;" alt=""/><br /><sub><b>Brad Dunn</b></sub></a><br /><a href="https://github.com/Astrocoders/reason-apollo-hooks/commits?author=bdunn313" title="Documentation">📖</a></td>
   </tr>
 </table>
 
 <!-- markdownlint-enable -->
 <!-- prettier-ignore-end -->
+
 <!-- ALL-CONTRIBUTORS-LIST:END -->
 
 This project follows the [all-contributors](https://github.com/all-contributors/all-contributors) specification. Contributions of any kind welcome!
